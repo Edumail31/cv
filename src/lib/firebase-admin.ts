@@ -1,50 +1,83 @@
 // Firebase Admin SDK for server-side operations
-// This bypasses Firestore security rules and should only be used in API routes
 import { initializeApp, getApps, cert, App } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 
-let adminApp: App;
-let adminDb: Firestore;
+let adminDb: Firestore | null = null;
+let initError: string | null = null;
 
-function initializeAdminApp() {
-    if (getApps().length === 0) {
-        // Check if we have a service account key in env vars
+function initializeAdminApp(): { db: Firestore | null; error: string | null } {
+    if (adminDb) {
+        return { db: adminDb, error: null };
+    }
+
+    try {
+        let app: App;
+
+        if (getApps().length > 0) {
+            app = getApps()[0];
+            adminDb = getFirestore(app);
+            return { db: adminDb, error: null };
+        }
+
         const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+        const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 
-        if (serviceAccountBase64) {
-            // Parse the base64 encoded service account
+        console.log("[Firebase Admin] Initializing...");
+        console.log("[Firebase Admin] Service account key exists:", !!serviceAccountBase64);
+        console.log("[Firebase Admin] Key length:", serviceAccountBase64?.length || 0);
+        console.log("[Firebase Admin] Project ID:", projectId);
+
+        if (serviceAccountBase64 && serviceAccountBase64.length > 100) {
             try {
-                const serviceAccount = JSON.parse(
-                    Buffer.from(serviceAccountBase64, 'base64').toString('utf-8')
-                );
-                adminApp = initializeApp({
+                // Clean the base64 string (remove any whitespace/newlines)
+                const cleanedBase64 = serviceAccountBase64.replace(/\s/g, '');
+
+                // Decode base64
+                const decodedJson = Buffer.from(cleanedBase64, 'base64').toString('utf-8');
+                console.log("[Firebase Admin] Decoded JSON length:", decodedJson.length);
+                console.log("[Firebase Admin] First 50 chars:", decodedJson.substring(0, 50));
+
+                // Parse JSON
+                const serviceAccount = JSON.parse(decodedJson);
+                console.log("[Firebase Admin] Parsed project_id:", serviceAccount.project_id);
+                console.log("[Firebase Admin] Parsed client_email:", serviceAccount.client_email);
+
+                app = initializeApp({
                     credential: cert(serviceAccount),
                     projectId: serviceAccount.project_id,
                 });
-            } catch (e) {
-                console.error("Error parsing service account:", e);
-                // Fall back to application default credentials
-                adminApp = initializeApp({
-                    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-                });
-            }
-        } else {
-            // Use application default credentials (works in Google Cloud)
-            // or initialize with project ID only (limited functionality)
-            adminApp = initializeApp({
-                projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-            });
-        }
-    } else {
-        adminApp = getApps()[0];
-    }
+                console.log("[Firebase Admin] Initialized with service account successfully!");
+            } catch (parseError) {
+                console.error("[Firebase Admin] Error parsing service account:", parseError);
+                initError = `Service account parse error: ${String(parseError)}`;
 
-    adminDb = getFirestore(adminApp);
-    return { adminApp, adminDb };
+                // Fallback to project ID only
+                if (projectId) {
+                    console.log("[Firebase Admin] Falling back to project ID only...");
+                    app = initializeApp({ projectId });
+                } else {
+                    throw new Error("No project ID available for fallback");
+                }
+            }
+        } else if (projectId) {
+            console.log("[Firebase Admin] No service account, using project ID only...");
+            app = initializeApp({ projectId });
+        } else {
+            throw new Error("No Firebase credentials available");
+        }
+
+        adminDb = getFirestore(app);
+        console.log("[Firebase Admin] Firestore initialized successfully!");
+        return { db: adminDb, error: null };
+
+    } catch (error) {
+        console.error("[Firebase Admin] Fatal initialization error:", error);
+        initError = String(error);
+        return { db: null, error: initError };
+    }
 }
 
-// Initialize on module load
-const { adminDb: db } = initializeAdminApp();
+// Initialize on first import
+const { db, error } = initializeAdminApp();
 
-export { db as adminDb };
-export default adminApp!;
+export { db as adminDb, error as adminDbError };

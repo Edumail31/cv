@@ -1,52 +1,73 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { adminDb } from "@/lib/firebase-admin";
+import { adminDb, adminDbError } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST(request: NextRequest) {
+    console.log("[Payment Verify] Starting payment verification...");
+
     try {
+        const body = await request.json();
         const {
             razorpay_order_id,
             razorpay_payment_id,
             razorpay_signature,
             userId,
             plan,
-        } = await request.json();
+        } = body;
+
+        console.log("[Payment Verify] Request body:", {
+            razorpay_order_id,
+            razorpay_payment_id: razorpay_payment_id?.substring(0, 10) + "...",
+            userId,
+            plan
+        });
 
         // Validate required fields
         if (!userId || !plan || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-            console.error("Missing required fields:", { userId, plan, razorpay_order_id, razorpay_payment_id });
+            console.error("[Payment Verify] Missing required fields");
             return NextResponse.json(
-                { error: "Missing required payment fields" },
+                { error: "Missing required payment fields", details: { userId: !!userId, plan: !!plan, orderId: !!razorpay_order_id, paymentId: !!razorpay_payment_id, signature: !!razorpay_signature } },
                 { status: 400 }
+            );
+        }
+
+        // Check if Admin DB is available
+        if (!adminDb) {
+            console.error("[Payment Verify] Admin DB not initialized:", adminDbError);
+            return NextResponse.json(
+                { error: "Database not configured", details: adminDbError },
+                { status: 500 }
             );
         }
 
         // Verify signature
         const secret = process.env.RAZORPAY_KEY_SECRET || "";
         if (!secret) {
-            console.error("RAZORPAY_KEY_SECRET not configured");
+            console.error("[Payment Verify] RAZORPAY_KEY_SECRET not configured");
             return NextResponse.json(
                 { error: "Payment verification not configured" },
                 { status: 500 }
             );
         }
 
-        const body = razorpay_order_id + "|" + razorpay_payment_id;
+        const signatureBody = razorpay_order_id + "|" + razorpay_payment_id;
         const expectedSignature = crypto
             .createHmac("sha256", secret)
-            .update(body)
+            .update(signatureBody)
             .digest("hex");
 
         if (expectedSignature !== razorpay_signature) {
-            console.error("Signature mismatch:", { expected: expectedSignature, received: razorpay_signature });
+            console.error("[Payment Verify] Signature mismatch");
             return NextResponse.json(
                 { error: "Invalid payment signature" },
                 { status: 400 }
             );
         }
 
-        // Payment verified - Update user's subscription in Firestore using Admin SDK
+        console.log("[Payment Verify] Signature verified successfully");
+
+        // Update user's subscription in Firestore using Admin SDK
         const userRef = adminDb.collection("users").doc(userId);
         const now = FieldValue.serverTimestamp();
 
@@ -54,7 +75,9 @@ export async function POST(request: NextRequest) {
         const endDate = new Date();
         endDate.setFullYear(endDate.getFullYear() + 1);
 
-        // Use set with merge to ensure it works
+        console.log("[Payment Verify] Updating Firestore for user:", userId);
+
+        // Use set with merge
         await userRef.set({
             tier: plan,
             subscription: {
@@ -78,7 +101,7 @@ export async function POST(request: NextRequest) {
             updatedAt: now,
         }, { merge: true });
 
-        console.log(`Successfully upgraded user ${userId} to ${plan}`);
+        console.log(`[Payment Verify] Successfully upgraded user ${userId} to ${plan}`);
 
         return NextResponse.json({
             success: true,
@@ -86,7 +109,7 @@ export async function POST(request: NextRequest) {
             plan,
         });
     } catch (error) {
-        console.error("Payment verification error:", error);
+        console.error("[Payment Verify] Fatal error:", error);
         return NextResponse.json(
             { error: "Payment verification failed", details: String(error) },
             { status: 500 }
