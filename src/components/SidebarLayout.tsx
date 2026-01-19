@@ -223,28 +223,30 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
                             </button>
                         )}
 
-                        {/* Dev Tools Button */}
-                        <div style={{ padding: "12px 16px", marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-                            <button
-                                onClick={() => router.push("/dev-tools")}
-                                style={{
-                                    width: "100%",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "12px",
-                                    background: "rgba(236, 72, 153, 0.1)",
-                                    border: "1px solid rgba(236, 72, 153, 0.2)",
-                                    borderRadius: "8px",
-                                    padding: "10px",
-                                    color: "#ec4899",
-                                    cursor: "pointer",
-                                    fontSize: "0.85rem",
-                                    fontWeight: 600
-                                }}
-                            >
-                                <span style={{ flex: 1 }}>🛠️ Dev Tools</span>
-                            </button>
-                        </div>
+                        {/* Dev Tools Button - Only in development */}
+                        {process.env.NODE_ENV === 'development' && (
+                            <div style={{ padding: "12px 16px", marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+                                <button
+                                    onClick={() => router.push("/dev-tools")}
+                                    style={{
+                                        width: "100%",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "12px",
+                                        background: "rgba(236, 72, 153, 0.1)",
+                                        border: "1px solid rgba(236, 72, 153, 0.2)",
+                                        borderRadius: "8px",
+                                        padding: "10px",
+                                        color: "#ec4899",
+                                        cursor: "pointer",
+                                        fontSize: "0.85rem",
+                                        fontWeight: 600
+                                    }}
+                                >
+                                    <span style={{ flex: 1 }}>🛠️ Dev Tools</span>
+                                </button>
+                            </div>
+                        )}
 
                         {/* Upgrade Button - Only for free or pro users */}
                         {getUpgradeText() && (
