@@ -12,7 +12,18 @@ import { onAuthStateChanged, User, sendEmailVerification } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp, onSnapshot, deleteDoc } from "firebase/firestore";
 import SidebarLayout from "@/components/SidebarLayout";
 import LazySection from "@/components/LazySection";
-import { PlanType, PLAN_LIMITS, getDaysUntilReset, shouldResetUsage } from "@/lib/usage";
+import {
+    PlanType,
+    PLAN_LIMITS,
+    getDaysUntilReset,
+    shouldResetUsage,
+    isSubscriptionExpired,
+    getDaysUntilExpiry,
+    getDaysUntilResetFromStartDate,
+    shouldResetUsageForPaidUser,
+    getEffectiveTier,
+    UserSubscription
+} from "@/lib/usage";
 import { Mail, RefreshCw as RefreshIcon } from "lucide-react"; // Renamed to avoid partial conflict if needed
 
 // ... interfaces ...
@@ -58,6 +69,8 @@ export default function DashboardPage() {
     // ... history state ...
     const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistory[]>([]);
     const [daysUntilReset, setDaysUntilReset] = useState(30);
+    const [daysUntilExpiry, setDaysUntilExpiry] = useState<number>(-1); // -1 = no expiry (free tier)
+    const [subscription, setSubscription] = useState<UserSubscription | null>(null);
 
     useEffect(() => {
         let userUnsubscribe: (() => void) | null = null;
@@ -87,18 +100,53 @@ export default function DashboardPage() {
                         data.usage?.lastResetDate?.toDate?.() ||
                         data.lastResetDate?.toDate?.() ||
                         new Date();
-                    const tier = data.tier || data.subscription?.plan || "free";
+                    let tier = data.tier || data.subscription?.plan || "free";
+                    const subscriptionData = data.subscription || null;
 
-                    // Check if usage needs to be reset (30 days passed)
-                    if (shouldResetUsage(lastReset, tier)) {
+                    // Parse subscription dates
+                    const subStartDate = subscriptionData?.startDate?.toDate?.() ||
+                        (subscriptionData?.startDate ? new Date(subscriptionData.startDate) : null);
+                    const subEndDate = subscriptionData?.endDate?.toDate?.() ||
+                        (subscriptionData?.endDate ? new Date(subscriptionData.endDate) : null);
+                    const subLastReset = subscriptionData?.lastResetDate?.toDate?.() ||
+                        (subscriptionData?.lastResetDate ? new Date(subscriptionData.lastResetDate) : null);
+
+                    // Check if paid subscription has expired and downgrade to free
+                    if (tier !== "free" && subEndDate && new Date() > subEndDate) {
                         try {
+                            await updateDoc(doc(db, "users", currentUser.uid), {
+                                tier: "free",
+                                "subscription.status": "expired"
+                            });
+                            tier = "free"; // Update local state
+                        } catch (error) {
+                            console.error("Error downgrading expired tier:", error);
+                        }
+                    }
+
+                    // Determine if reset is needed based on tier type
+                    let needsReset = false;
+                    if (tier === "free") {
+                        // Free users: reset based on last reset date
+                        needsReset = shouldResetUsage(lastReset, tier);
+                    } else if (subStartDate && subLastReset) {
+                        // Paid users: reset based on subscription start date cycles
+                        needsReset = shouldResetUsageForPaidUser(subStartDate, subLastReset);
+                    }
+
+                    // Perform reset if needed
+                    if (needsReset) {
+                        try {
+                            const now = new Date();
                             await updateDoc(doc(db, "users", currentUser.uid), {
                                 "usage.resumeAnalyzer": 0,
                                 "usage.resumeComparison": 0,
                                 "usage.interviewQuestions": 0,
                                 "usage.companyCompatibility": 0,
                                 "usage.resumeExports": 0,
-                                "usage.lastResetDate": new Date()
+                                "usage.atsResumeGenerator": 0,
+                                "usage.lastResetDate": now,
+                                "subscription.lastResetDate": now
                             });
                             // Don't update state here, the snapshot will fire again with new data
                             return;
@@ -118,7 +166,32 @@ export default function DashboardPage() {
                             lastResetDate: lastReset,
                         },
                     });
-                    setDaysUntilReset(getDaysUntilReset(lastReset, tier));
+
+                    // Set subscription state
+                    if (subscriptionData) {
+                        setSubscription({
+                            plan: subscriptionData.plan || "free",
+                            status: subscriptionData.status || "active",
+                            startDate: subStartDate || undefined,
+                            endDate: subEndDate || undefined,
+                            lastResetDate: subLastReset || undefined,
+                            paymentId: subscriptionData.paymentId,
+                            orderId: subscriptionData.orderId
+                        });
+                    }
+
+                    // Calculate days until reset based on tier
+                    if (tier === "free") {
+                        setDaysUntilReset(getDaysUntilReset(lastReset, tier));
+                        setDaysUntilExpiry(-1); // No expiry for free
+                    } else if (subStartDate) {
+                        setDaysUntilReset(getDaysUntilResetFromStartDate(subStartDate));
+                        if (subEndDate) {
+                            setDaysUntilExpiry(getDaysUntilExpiry(subEndDate));
+                        }
+                    } else {
+                        setDaysUntilReset(getDaysUntilReset(lastReset, tier));
+                    }
                 }
                 setLoading(false);
             }, (error) => {
@@ -378,7 +451,12 @@ export default function DashboardPage() {
 
                 {/* Stats Row - Updated */}
                 <LazySection animation="slide-up" delay={100}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "var(--space-4)", marginBottom: "var(--space-8)" }}>
+                    <div style={{
+                        display: "grid",
+                        gridTemplateColumns: userData.tier === "free" ? "repeat(3, 1fr)" : "repeat(4, 1fr)",
+                        gap: "var(--space-4)",
+                        marginBottom: "var(--space-8)"
+                    }}>
                         <div className="glass-purple" style={{
                             borderRadius: "var(--radius-lg)",
                             padding: "var(--space-6)"
@@ -403,6 +481,32 @@ export default function DashboardPage() {
                             <div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{daysUntilReset}</div>
                             <div style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>Days Until Reset</div>
                         </div>
+                        {/* Subscription Expiry - Only for paid users */}
+                        {userData.tier !== "free" && (
+                            <div style={{
+                                borderRadius: "var(--radius-lg)",
+                                padding: "var(--space-6)",
+                                background: userData.tier === "premium"
+                                    ? "linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(245, 158, 11, 0.1))"
+                                    : "linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(22, 163, 74, 0.1))",
+                                border: userData.tier === "premium"
+                                    ? "1px solid rgba(251, 191, 36, 0.3)"
+                                    : "1px solid rgba(34, 197, 94, 0.3)"
+                            }}>
+                                <div style={{
+                                    color: userData.tier === "premium" ? "#fbbf24" : "#22c55e",
+                                    marginBottom: "var(--space-3)"
+                                }}>
+                                    <Crown size={24} />
+                                </div>
+                                <div style={{ fontSize: "1.5rem", fontWeight: 700 }}>
+                                    {daysUntilExpiry > 0 ? daysUntilExpiry : "--"}
+                                </div>
+                                <div style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+                                    Days Until Expiry
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </LazySection>
 

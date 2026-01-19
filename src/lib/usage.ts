@@ -56,9 +56,11 @@ export interface FeatureUsage {
 export interface UserSubscription {
     plan: PlanType;
     status: "active" | "expired" | "cancelled";
-    startDate?: Date;
-    endDate?: Date;
+    startDate?: Date;        // When subscription began
+    endDate?: Date;          // Expiry date (startDate + 12 months for paid)
+    lastResetDate?: Date;    // Monthly reset anchor (from purchase date for paid)
     paymentId?: string;
+    orderId?: string;
 }
 
 export interface UserProfile {
@@ -234,5 +236,90 @@ export function canCreateResume(
 ): { allowed: boolean; remaining: number; limit: number } {
     // Resume creation is now unlimited, but keeping the function for backwards compat
     return { allowed: true, remaining: -1, limit: -1 };
+}
+
+// ========================
+// SUBSCRIPTION MANAGEMENT
+// ========================
+
+/**
+ * Check if a paid subscription has expired
+ * Returns true if the current date is past the endDate
+ */
+export function isSubscriptionExpired(subscription: UserSubscription | null | undefined): boolean {
+    if (!subscription) return true;
+    if (subscription.plan === "free") return false; // Free never expires
+    if (!subscription.endDate) return false; // No end date means no expiry
+
+    const endDate = subscription.endDate instanceof Date
+        ? subscription.endDate
+        : new Date(subscription.endDate);
+    return new Date() > endDate;
+}
+
+/**
+ * Get days until subscription expires
+ * Returns -1 for free tier (no expiry)
+ */
+export function getDaysUntilExpiry(endDate: Date | null | undefined): number {
+    if (!endDate) return -1;
+
+    const end = endDate instanceof Date ? endDate : new Date(endDate);
+    const now = new Date();
+    const diffTime = end.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(0, diffDays);
+}
+
+/**
+ * Calculate days until next monthly reset based on a start date
+ * This creates a rolling 30-day cycle from the subscription start date
+ * 
+ * Example: If user subscribed Jan 15, resets happen Feb 15, Mar 15, etc.
+ */
+export function getDaysUntilResetFromStartDate(startDate: Date): number {
+    const now = new Date();
+    const start = startDate instanceof Date ? startDate : new Date(startDate);
+
+    // Calculate days since subscription start
+    const daysSinceStart = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+    // Days into current 30-day cycle
+    const daysIntoCycle = daysSinceStart % 30;
+
+    // Days until next reset
+    return 30 - daysIntoCycle;
+}
+
+/**
+ * Check if usage should be reset based on subscription start date
+ * For paid users: resets every 30 days from subscription start
+ * For free users: resets every 30 days from last reset date
+ */
+export function shouldResetUsageForPaidUser(subscriptionStartDate: Date, lastResetDate: Date): boolean {
+    const now = new Date();
+    const start = subscriptionStartDate instanceof Date ? subscriptionStartDate : new Date(subscriptionStartDate);
+    const lastReset = lastResetDate instanceof Date ? lastResetDate : new Date(lastResetDate);
+
+    // Calculate total complete 30-day cycles since subscription start
+    const daysSinceStart = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const currentCycle = Math.floor(daysSinceStart / 30);
+
+    // Calculate which cycle the last reset was in
+    const daysSinceStartAtLastReset = Math.floor((lastReset.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const lastResetCycle = Math.floor(daysSinceStartAtLastReset / 30);
+
+    // Reset if we're in a new cycle
+    return currentCycle > lastResetCycle;
+}
+
+/**
+ * Get the effective tier for a user, checking for expiration
+ * If paid subscription expired, returns 'free'
+ */
+export function getEffectiveTier(tier: PlanType, subscription: UserSubscription | null | undefined): PlanType {
+    if (tier === "free") return "free";
+    if (isSubscriptionExpired(subscription)) return "free";
+    return tier;
 }
 

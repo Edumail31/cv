@@ -31,8 +31,11 @@ export async function POST(request: NextRequest) {
         // Payment verified - Update user's subscription in Firestore
         try {
             const userRef = doc(db, "users", userId);
-            const subscriptionEnd = new Date();
-            subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1); // 1 year subscription
+            const now = new Date();
+
+            // Calculate subscription end date (12 months from now)
+            const subscriptionEnd = new Date(now);
+            subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1);
 
             await updateDoc(userRef, {
                 tier: plan, // Set user tier directly for existing code compatibility
@@ -41,8 +44,19 @@ export async function POST(request: NextRequest) {
                     status: "active",
                     paymentId: razorpay_payment_id,
                     orderId: razorpay_order_id,
-                    startDate: serverTimestamp(),
-                    endDate: subscriptionEnd,
+                    startDate: now,           // Subscription starts now
+                    endDate: subscriptionEnd, // Expires in 12 months
+                    lastResetDate: now,       // Monthly reset cycle starts from purchase
+                },
+                // Reset all usage counters on upgrade/purchase
+                usage: {
+                    resumeAnalyzer: 0,
+                    resumeComparison: 0,
+                    interviewQuestions: 0,
+                    companyCompatibility: 0,
+                    resumeExports: 0,
+                    atsResumeGenerator: 0,
+                    lastResetDate: now,
                 },
                 updatedAt: serverTimestamp(),
             });
