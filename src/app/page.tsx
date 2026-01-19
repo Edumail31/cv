@@ -478,7 +478,7 @@ export default function Home() {
                   {[
                     "20 ATS Resume Scores/month",
                     "5 Resume Comparisons/month",
-                    "Interview Questions (up to 20)",
+                    "5 Interview Questions/month",
                     "5 Job Fit Score Checks/month",
                     "Advanced AI Pro-Tips",
                   ].map((item, i) => (
@@ -509,9 +509,9 @@ export default function Home() {
                   {[
                     "Unlimited ATS Resume Scores",
                     "20 Resume Comparisons/month",
-                    "Interview Questions (up to 50)",
+                    "10 Interview Questions/month",
                     "20 Job Fit Score Checks/month",
-                    "10 Resume Exports (PDF+DOCX)",
+                    "3 Resume Exports (PDF+DOCX)",
                     "5 ATS Resume Generations/month",
                     "Expected Answers & Follow-ups",
                   ].map((item, i) => (

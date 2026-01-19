@@ -5,7 +5,7 @@ export const PLAN_LIMITS = {
         resumeComparison: 1,         // 1 per month (partial output)
         interviewQuestions: 0,       // locked
         companyCompatibility: 0,     // locked
-        resumeExports: 1,            // 1 per month (watermarked PDF)
+        resumeExports: 0,            // locked (Premium only)
         atsResumeGenerator: 0,       // locked (Premium only)
         aiDepth: "basic" as const,
         resetPeriod: "monthly" as const,
@@ -17,7 +17,7 @@ export const PLAN_LIMITS = {
         resumeComparison: 5,         // 5 per month
         interviewQuestions: 5,       // 5 per month (50 questions each)
         companyCompatibility: 5,     // 5 per month
-        resumeExports: 5,            // 5 per month (PDF + DOCX, no watermark)
+        resumeExports: 0,            // locked (Premium only)
         atsResumeGenerator: 0,       // locked (Premium only)
         aiDepth: "medium" as const,
         resetPeriod: "monthly" as const,
@@ -29,7 +29,7 @@ export const PLAN_LIMITS = {
         resumeComparison: 20,        // 20 per month
         interviewQuestions: 10,      // 10 per month (100 questions each)
         companyCompatibility: 20,    // 20 per month
-        resumeExports: 10,           // 10 per month (PDF + DOCX, no watermark)
+        resumeExports: 3,            // 3 per month (PDF + DOCX, Premium only)
         atsResumeGenerator: 5,       // 5 per month (Premium exclusive)
         aiDepth: "high" as const,
         resetPeriod: "monthly" as const,
