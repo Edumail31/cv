@@ -19,56 +19,60 @@ function initializeAdminApp(): { db: Firestore | null; error: string | null } {
             return { db: adminDb, error: null };
         }
 
-        const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-        const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+        // Try multiple methods to get service account
+        const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "resumescore-app";
 
-        console.log("[Firebase Admin] Initializing...");
-        console.log("[Firebase Admin] Service account key exists:", !!serviceAccountBase64);
-        console.log("[Firebase Admin] Key length:", serviceAccountBase64?.length || 0);
-        console.log("[Firebase Admin] Project ID:", projectId);
+        // Method 1: Individual environment variables (most reliable for Vercel)
+        const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+        const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 
-        if (serviceAccountBase64 && serviceAccountBase64.length > 100) {
+        if (privateKey && clientEmail) {
+            console.log("[Firebase Admin] Using individual env vars for credentials");
             try {
-                // Clean the base64 string (remove any whitespace/newlines)
-                const cleanedBase64 = serviceAccountBase64.replace(/\s/g, '');
+                app = initializeApp({
+                    credential: cert({
+                        projectId: projectId,
+                        clientEmail: clientEmail,
+                        // Handle escaped newlines in private key
+                        privateKey: privateKey.replace(/\\n/g, '\n'),
+                    }),
+                    projectId: projectId,
+                });
+                adminDb = getFirestore(app);
+                console.log("[Firebase Admin] Initialized successfully with individual env vars!");
+                return { db: adminDb, error: null };
+            } catch (e) {
+                console.error("[Firebase Admin] Error with individual env vars:", e);
+            }
+        }
 
-                // Decode base64
+        // Method 2: Base64 encoded JSON
+        const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+        if (serviceAccountBase64 && serviceAccountBase64.length > 100) {
+            console.log("[Firebase Admin] Trying base64 service account, length:", serviceAccountBase64.length);
+            try {
+                const cleanedBase64 = serviceAccountBase64.replace(/[\s\r\n]/g, '');
                 const decodedJson = Buffer.from(cleanedBase64, 'base64').toString('utf-8');
-                console.log("[Firebase Admin] Decoded JSON length:", decodedJson.length);
-                console.log("[Firebase Admin] First 50 chars:", decodedJson.substring(0, 50));
-
-                // Parse JSON
                 const serviceAccount = JSON.parse(decodedJson);
-                console.log("[Firebase Admin] Parsed project_id:", serviceAccount.project_id);
-                console.log("[Firebase Admin] Parsed client_email:", serviceAccount.client_email);
 
                 app = initializeApp({
                     credential: cert(serviceAccount),
                     projectId: serviceAccount.project_id,
                 });
-                console.log("[Firebase Admin] Initialized with service account successfully!");
-            } catch (parseError) {
-                console.error("[Firebase Admin] Error parsing service account:", parseError);
-                initError = `Service account parse error: ${String(parseError)}`;
-
-                // Fallback to project ID only
-                if (projectId) {
-                    console.log("[Firebase Admin] Falling back to project ID only...");
-                    app = initializeApp({ projectId });
-                } else {
-                    throw new Error("No project ID available for fallback");
-                }
+                adminDb = getFirestore(app);
+                console.log("[Firebase Admin] Initialized successfully with base64!");
+                return { db: adminDb, error: null };
+            } catch (e) {
+                console.error("[Firebase Admin] Error with base64:", e);
             }
-        } else if (projectId) {
-            console.log("[Firebase Admin] No service account, using project ID only...");
-            app = initializeApp({ projectId });
-        } else {
-            throw new Error("No Firebase credentials available");
         }
 
+        // Method 3: Just project ID (won't work for writes but prevents crash)
+        console.log("[Firebase Admin] No valid credentials found, using project ID only");
+        app = initializeApp({ projectId });
         adminDb = getFirestore(app);
-        console.log("[Firebase Admin] Firestore initialized successfully!");
-        return { db: adminDb, error: null };
+        initError = "No valid service account credentials configured";
+        return { db: adminDb, error: initError };
 
     } catch (error) {
         console.error("[Firebase Admin] Fatal initialization error:", error);
