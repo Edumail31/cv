@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { callWithFallback } from "@/lib/ai-service";
 import { parseResume } from "@/lib/resume-parser";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, updateDoc, increment, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { adminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { canUseFeature, getAIDepth, type PlanType } from "@/lib/usage";
 
 interface ComparisonParameter {
@@ -323,14 +325,16 @@ export async function POST(request: NextRequest) {
             delete result.premiumInsights;
         }
 
-        // Update usage count
-        if (userId) {
+        // Update usage count using Admin SDK (bypasses security rules)
+        if (userId && adminDb) {
             try {
-                await updateDoc(doc(db, "users", userId), {
-                    "usage.resumeComparison": increment(1),
-                    "featureUsage.resumeComparison": increment(1),
-                    "featureUsage.lastUsed": serverTimestamp()
+                const userRef = adminDb.collection("users").doc(userId);
+                await userRef.update({
+                    "usage.resumeComparison": FieldValue.increment(1),
+                    "featureUsage.resumeComparison": FieldValue.increment(1),
+                    "featureUsage.lastUsed": FieldValue.serverTimestamp()
                 });
+                console.log(`[Compare API] Updated usage for user ${userId}`);
 
                 // Log AI execution
                 await addDoc(collection(db, "ai_execution_logs"), {
