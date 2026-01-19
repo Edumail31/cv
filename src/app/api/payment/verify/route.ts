@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, Timestamp } from "firebase/firestore";
 
 export async function POST(request: NextRequest) {
     try {
@@ -13,8 +13,25 @@ export async function POST(request: NextRequest) {
             plan,
         } = await request.json();
 
+        // Validate required fields
+        if (!userId || !plan || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+            console.error("Missing required fields:", { userId, plan, razorpay_order_id, razorpay_payment_id });
+            return NextResponse.json(
+                { error: "Missing required payment fields" },
+                { status: 400 }
+            );
+        }
+
         // Verify signature
         const secret = process.env.RAZORPAY_KEY_SECRET || "";
+        if (!secret) {
+            console.error("RAZORPAY_KEY_SECRET not configured");
+            return NextResponse.json(
+                { error: "Payment verification not configured" },
+                { status: 500 }
+            );
+        }
+
         const body = razorpay_order_id + "|" + razorpay_payment_id;
         const expectedSignature = crypto
             .createHmac("sha256", secret)
@@ -22,6 +39,7 @@ export async function POST(request: NextRequest) {
             .digest("hex");
 
         if (expectedSignature !== razorpay_signature) {
+            console.error("Signature mismatch:", { expected: expectedSignature, received: razorpay_signature });
             return NextResponse.json(
                 { error: "Invalid payment signature" },
                 { status: 400 }
@@ -29,41 +47,39 @@ export async function POST(request: NextRequest) {
         }
 
         // Payment verified - Update user's subscription in Firestore
-        try {
-            const userRef = doc(db, "users", userId);
-            const now = new Date();
+        const userRef = doc(db, "users", userId);
+        const now = Timestamp.now();
 
-            // Calculate subscription end date (12 months from now)
-            const subscriptionEnd = new Date(now);
-            subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1);
+        // Calculate subscription end date (12 months from now)
+        const endDateMs = Date.now() + (365 * 24 * 60 * 60 * 1000);
+        const subscriptionEnd = Timestamp.fromMillis(endDateMs);
 
-            await updateDoc(userRef, {
-                tier: plan, // Set user tier directly for existing code compatibility
-                subscription: {
-                    plan,
-                    status: "active",
-                    paymentId: razorpay_payment_id,
-                    orderId: razorpay_order_id,
-                    startDate: now,           // Subscription starts now
-                    endDate: subscriptionEnd, // Expires in 12 months
-                    lastResetDate: now,       // Monthly reset cycle starts from purchase
-                },
-                // Reset all usage counters on upgrade/purchase
-                usage: {
-                    resumeAnalyzer: 0,
-                    resumeComparison: 0,
-                    interviewQuestions: 0,
-                    companyCompatibility: 0,
-                    resumeExports: 0,
-                    atsResumeGenerator: 0,
-                    lastResetDate: now,
-                },
-                updatedAt: serverTimestamp(),
-            });
-        } catch (dbError) {
-            console.error("Database update error:", dbError);
-            // Still return success since payment was verified
-        }
+        // Use setDoc with merge to ensure it works even if doc doesn't exist
+        // or if there are issues with nested objects
+        await setDoc(userRef, {
+            tier: plan,
+            subscription: {
+                plan: plan,
+                status: "active",
+                paymentId: razorpay_payment_id,
+                orderId: razorpay_order_id,
+                startDate: now,
+                endDate: subscriptionEnd,
+                lastResetDate: now,
+            },
+            usage: {
+                resumeAnalyzer: 0,
+                resumeComparison: 0,
+                interviewQuestions: 0,
+                companyCompatibility: 0,
+                resumeExports: 0,
+                atsResumeGenerator: 0,
+                lastResetDate: now,
+            },
+            updatedAt: now,
+        }, { merge: true });
+
+        console.log(`Successfully upgraded user ${userId} to ${plan}`);
 
         return NextResponse.json({
             success: true,
@@ -73,7 +89,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error("Payment verification error:", error);
         return NextResponse.json(
-            { error: "Payment verification failed" },
+            { error: "Payment verification failed", details: String(error) },
             { status: 500 }
         );
     }
