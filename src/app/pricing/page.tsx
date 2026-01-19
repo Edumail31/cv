@@ -142,7 +142,12 @@ export default function PricingPage() {
                         setSuccessPlan(planName as "pro" | "premium");
                         setShowSuccessModal(true);
                     } else {
-                        alert("Payment verification failed. Please contact support.");
+                        // Show detailed error for debugging
+                        const errorMsg = verifyData.details
+                            ? `Payment verification failed: ${verifyData.error}\n\nDetails: ${verifyData.details}`
+                            : `Payment verification failed: ${verifyData.error || "Unknown error"}`;
+                        alert(errorMsg);
+                        console.error("Payment verification error:", verifyData);
                     }
                     setProcessingPlan(null);
                 },
