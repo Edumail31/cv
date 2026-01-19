@@ -185,7 +185,10 @@ export default function SignupPage() {
                     <p style={{ color: '#94a3b8', marginBottom: '24px' }}>
                         We've sent a verification link to <strong>{email}</strong>.
                         <br /><br />
-                        Please check your inbox (and spam folder) and click the link to verify your account.
+                        Please check your inbox and click the link to verify your account.
+                    </p>
+                    <p style={{ color: '#f59e0b', fontSize: '0.85rem', marginBottom: '20px' }}>
+                        💡 Didn't receive the email? Check your spam folder.
                     </p>
                     <button
                         onClick={() => router.push('/login')}
