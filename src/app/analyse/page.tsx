@@ -93,6 +93,17 @@ export default function AnalysePage() {
                 } catch (e) {
                     console.error("Error fetching user tier:", e);
                 }
+
+                // Restore analysis from sessionStorage if available (for reload/back navigation)
+                try {
+                    const cached = sessionStorage.getItem(`analysis_${currentUser.uid}`);
+                    if (cached && !analysis) {
+                        const parsedAnalysis = JSON.parse(cached);
+                        setAnalysis(parsedAnalysis);
+                    }
+                } catch (e) {
+                    console.error("Error restoring cached analysis:", e);
+                }
             }
         });
         return () => unsubscribe();
@@ -169,6 +180,15 @@ export default function AnalysePage() {
 
             setAnalysis(data.analysis);
 
+            // Cache analysis in sessionStorage for reload/back navigation persistence
+            if (auth.currentUser) {
+                try {
+                    sessionStorage.setItem(`analysis_${auth.currentUser.uid}`, JSON.stringify(data.analysis));
+                } catch (e) {
+                    console.error("Error caching analysis:", e);
+                }
+            }
+
             // Save analysis to Firestore for history
             if (auth.currentUser) {
                 try {
@@ -203,6 +223,14 @@ export default function AnalysePage() {
         setAnalysis(null);
         setError(null);
         setActiveTab("overview");
+        // Clear cached analysis when user explicitly resets
+        if (auth.currentUser) {
+            try {
+                sessionStorage.removeItem(`analysis_${auth.currentUser.uid}`);
+            } catch (e) {
+                // Ignore errors
+            }
+        }
     };
 
     const getGradeColor = (grade: string) => {
