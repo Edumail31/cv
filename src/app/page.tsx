@@ -425,7 +425,6 @@ export default function Home() {
                   {[
                     "3 ATS Resume Scores/month",
                     "1 Resume Comparison/month",
-                    "1 ATS Resume Export (Watermarked)",
                     "Basic ATS Analysis",
                     "Profile Extraction",
                   ].map((item, i) => (

@@ -25,6 +25,7 @@ interface RazorpayOptions {
     handler: (response: RazorpayResponse) => void;
     prefill?: { name?: string; email?: string };
     theme?: { color?: string };
+    modal?: { ondismiss?: () => void };
 }
 
 interface RazorpayInstance {
@@ -51,6 +52,7 @@ export default function PricingPage() {
     const [currency, setCurrency] = useState<"INR" | "USD">("INR");
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [successPlan, setSuccessPlan] = useState<"pro" | "premium">("pro");
+    const [paymentCancelled, setPaymentCancelled] = useState(false);
 
     // Detect user region
     useEffect(() => {
@@ -151,6 +153,14 @@ export default function PricingPage() {
                 theme: {
                     color: "#6366f1",
                 },
+                modal: {
+                    ondismiss: () => {
+                        setProcessingPlan(null);
+                        setPaymentCancelled(true);
+                        // Auto-hide cancel message after 5 seconds
+                        setTimeout(() => setPaymentCancelled(false), 5000);
+                    }
+                }
             };
 
             const rzp = new window.Razorpay(options);
@@ -273,6 +283,25 @@ export default function PricingPage() {
                     </div>
                 </div>
             </header>
+
+            {/* Payment Cancelled Banner */}
+            {paymentCancelled && (
+                <div style={{
+                    background: "linear-gradient(90deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05))",
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    padding: "var(--space-4)",
+                    textAlign: "center",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "var(--space-2)"
+                }}>
+                    <XCircle size={18} style={{ color: "#ef4444" }} />
+                    <span style={{ color: "#ef4444", fontWeight: 500 }}>
+                        Payment cancelled by user. You can try again anytime.
+                    </span>
+                </div>
+            )}
 
             <main className="container" style={{ padding: "var(--space-12) var(--space-6)" }}>
                 <div style={{ textAlign: "center", marginBottom: "var(--space-12)" }}>
