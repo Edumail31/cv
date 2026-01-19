@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { db } from "@/lib/firebase";
-import { doc, setDoc, Timestamp } from "firebase/firestore";
+import { adminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST(request: NextRequest) {
     try {
@@ -46,17 +46,16 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Payment verified - Update user's subscription in Firestore
-        const userRef = doc(db, "users", userId);
-        const now = Timestamp.now();
+        // Payment verified - Update user's subscription in Firestore using Admin SDK
+        const userRef = adminDb.collection("users").doc(userId);
+        const now = FieldValue.serverTimestamp();
 
         // Calculate subscription end date (12 months from now)
-        const endDateMs = Date.now() + (365 * 24 * 60 * 60 * 1000);
-        const subscriptionEnd = Timestamp.fromMillis(endDateMs);
+        const endDate = new Date();
+        endDate.setFullYear(endDate.getFullYear() + 1);
 
-        // Use setDoc with merge to ensure it works even if doc doesn't exist
-        // or if there are issues with nested objects
-        await setDoc(userRef, {
+        // Use set with merge to ensure it works
+        await userRef.set({
             tier: plan,
             subscription: {
                 plan: plan,
@@ -64,7 +63,7 @@ export async function POST(request: NextRequest) {
                 paymentId: razorpay_payment_id,
                 orderId: razorpay_order_id,
                 startDate: now,
-                endDate: subscriptionEnd,
+                endDate: endDate,
                 lastResetDate: now,
             },
             usage: {
