@@ -480,7 +480,6 @@ export default function Home() {
                     "5 Resume Comparisons/month",
                     "Interview Questions (up to 20)",
                     "5 Job Fit Score Checks/month",
-                    "5 Resume Exports (PDF+DOCX)",
                     "Advanced AI Pro-Tips",
                   ].map((item, i) => (
                     <li key={i} className="flex items-center gap-2 mb-2 text-sm">

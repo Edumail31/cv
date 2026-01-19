@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle, XCircle, Zap, Shield, Crown, FileText, ArrowRight, Sparkles, Loader2 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
+import PaymentSuccessModal from "@/components/PaymentSuccessModal";
 
 // Declare Razorpay types
 declare global {
@@ -36,11 +37,44 @@ interface RazorpayResponse {
     razorpay_signature: string;
 }
 
+// Region-based pricing
+const PRICING = {
+    INR: { pro: "₹99", premium: "₹299", symbol: "₹" },
+    USD: { pro: "$5", premium: "$10", symbol: "$" }
+};
+
 export default function PricingPage() {
     const router = useRouter();
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [processingPlan, setProcessingPlan] = useState<string | null>(null);
+    const [currency, setCurrency] = useState<"INR" | "USD">("INR");
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
+    const [successPlan, setSuccessPlan] = useState<"pro" | "premium">("pro");
+
+    // Detect user region
+    useEffect(() => {
+        const detectRegion = async () => {
+            try {
+                // Use timezone to detect India vs others (simple approach)
+                const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                if (timezone.startsWith("Asia/Kolkata") || timezone.startsWith("Asia/Calcutta")) {
+                    setCurrency("INR");
+                } else {
+                    // Try IP-based detection for more accuracy
+                    const res = await fetch("https://ipapi.co/json/", { cache: "force-cache" });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setCurrency(data.country_code === "IN" ? "INR" : "USD");
+                    }
+                }
+            } catch {
+                // Default to INR if detection fails
+                setCurrency("INR");
+            }
+        };
+        detectRegion();
+    }, []);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -70,11 +104,11 @@ export default function PricingPage() {
         setProcessingPlan(planName);
 
         try {
-            // Create order
+            // Create order with currency
             const orderRes = await fetch("/api/payment/create-order", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ plan: planName, userId: user.uid }),
+                body: JSON.stringify({ plan: planName, userId: user.uid, currency }),
             });
 
             const orderData = await orderRes.json();
@@ -102,14 +136,16 @@ export default function PricingPage() {
 
                     const verifyData = await verifyRes.json();
                     if (verifyData.success) {
-                        alert("🎉 Payment successful! Welcome to " + planName.toUpperCase() + "!");
-                        router.push("/dashboard");
+                        // Show beautiful success modal
+                        setSuccessPlan(planName as "pro" | "premium");
+                        setShowSuccessModal(true);
                     } else {
                         alert("Payment verification failed. Please contact support.");
                     }
                     setProcessingPlan(null);
                 },
                 prefill: {
+                    name: user.displayName || user.email?.split("@")[0] || "",
                     email: user.email || "",
                 },
                 theme: {
@@ -129,7 +165,7 @@ export default function PricingPage() {
     const plans = [
         {
             name: "Free",
-            price: "₹0",
+            price: currency === "USD" ? "$0" : "₹0",
             period: "/forever",
             desc: "Perfect for students and early-career professionals",
             icon: <Zap size={32} style={{ color: "var(--primary-400)" }} />,
@@ -151,7 +187,7 @@ export default function PricingPage() {
         },
         {
             name: "Pro",
-            price: "₹99",
+            price: PRICING[currency].pro,
             period: "/year",
             desc: "For active job seekers looking for an edge",
             icon: <Shield size={32} style={{ color: "#22c55e" }} />,
@@ -160,7 +196,6 @@ export default function PricingPage() {
                 { text: "5 Compare Resume Scores/month", included: true },
                 { text: "Interview Questions (up to 20)", included: true },
                 { text: "5 Job Fit Score Checks/month", included: true },
-                { text: "5 Resume Exports (PDF + DOCX)", included: true },
                 { text: "ATS Resume Generator", included: false },
                 { text: "Advanced AI Pro-Tips", included: true },
                 { text: "Market Value Assessment", included: true },
@@ -174,7 +209,7 @@ export default function PricingPage() {
         },
         {
             name: "Premium",
-            price: "₹299",
+            price: PRICING[currency].premium,
             period: "/year",
             desc: "Unlimited power for high-stakes career moves",
             icon: <Crown size={32} style={{ color: "#fbbf24" }} />,
@@ -246,6 +281,25 @@ export default function PricingPage() {
                     <p style={{ color: "var(--text-secondary)", maxWidth: "600px", margin: "0 auto", fontSize: "1.125rem" }}>
                         Choose the plan that fits your career goals. Get the insights you need to land your dream job faster.
                     </p>
+                    {/* Currency indicator */}
+                    <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "8px",
+                        marginTop: "var(--space-4)"
+                    }}>
+                        <span style={{
+                            padding: "6px 12px",
+                            background: "rgba(99, 102, 241, 0.1)",
+                            borderRadius: "20px",
+                            fontSize: "0.85rem",
+                            color: "var(--text-secondary)",
+                            border: "1px solid rgba(99, 102, 241, 0.2)"
+                        }}>
+                            {currency === "INR" ? "🇮🇳 Prices in INR" : "🌍 Prices in USD"}
+                        </span>
+                    </div>
                 </div>
 
                 {/* Pricing Cards */}
@@ -400,6 +454,14 @@ export default function PricingPage() {
                     </div>
                 </div>
             </main>
+
+            {/* Payment Success Modal */}
+            <PaymentSuccessModal
+                isOpen={showSuccessModal}
+                onClose={() => setShowSuccessModal(false)}
+                planName={successPlan}
+                userName={user?.displayName || user?.email?.split('@')[0] || 'User'}
+            />
         </div>
     );
 }

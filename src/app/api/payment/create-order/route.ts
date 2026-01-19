@@ -15,6 +15,19 @@ function getRazorpay() {
     return razorpay;
 }
 
+// Multi-currency pricing
+// Note: Razorpay requires amounts in smallest currency unit (paise for INR, cents for USD)
+const PRICING = {
+    INR: {
+        pro: 9900,      // ₹99
+        premium: 29900, // ₹299
+    },
+    USD: {
+        pro: 500,       // $5
+        premium: 1000,  // $10
+    }
+};
+
 export async function POST(request: NextRequest) {
     try {
         const rp = getRazorpay();
@@ -25,7 +38,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { plan, userId } = await request.json();
+        const { plan, userId, currency = "INR" } = await request.json();
 
         if (!plan || !userId) {
             return NextResponse.json(
@@ -34,24 +47,23 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Pricing in paise (INR * 100)
-        const pricing: Record<string, number> = {
-            pro: 9900,      // ₹99
-            premium: 29900, // ₹299
-        };
+        // Validate currency
+        const validCurrency = currency === "USD" ? "USD" : "INR";
+        const pricing = PRICING[validCurrency as keyof typeof PRICING];
 
-        const amount = pricing[plan];
+        const amount = pricing[plan as keyof typeof pricing];
         if (!amount) {
             return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
         }
 
         const order = await rp.orders.create({
             amount,
-            currency: "INR",
+            currency: validCurrency,
             receipt: `receipt_${userId}_${Date.now()}`,
             notes: {
                 userId,
                 plan,
+                currency: validCurrency,
             },
         });
 
@@ -69,4 +81,3 @@ export async function POST(request: NextRequest) {
         );
     }
 }
-
