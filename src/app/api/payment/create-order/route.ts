@@ -56,10 +56,12 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
         }
 
+        // Receipt has 40 char max limit in Razorpay - use short format
+        // userId is stored in notes for reference
         const order = await rp.orders.create({
             amount,
             currency: validCurrency,
-            receipt: `receipt_${userId}_${Date.now()}`,
+            receipt: `rcpt_${Date.now()}`,
             notes: {
                 userId,
                 plan,
