@@ -1,0 +1,44 @@
+John Doe
+Software Engineer
+Email: john.doe@example.com
+Phone: +91 9876543210
+Location: Bangalore, India
+
+SUMMARY
+Experienced Full Stack Developer with 3 years of experience building web applications using React, Node.js, and Python. Strong problem-solving skills and passion for clean code.
+
+WORK EXPERIENCE
+
+Software Engineer | Tech Corp Inc | Jan 2022 - Present
+- Developed RESTful APIs using Node.js and Express
+- Built responsive UI components with React and TypeScript
+- Improved application performance by 40%
+- Collaborated with team of 5 developers
+
+Junior Developer | StartupXYZ | Jun 2020 - Dec 2021
+- Created web applications using JavaScript and React
+- Worked on database design with MongoDB
+- Participated in code reviews
+
+EDUCATION
+
+B.Tech in Computer Science | IIT Delhi | 2020
+CGPA: 8.5/10
+
+TECHNICAL SKILLS
+Programming: JavaScript, Python, TypeScript, Java
+Frameworks: React, Node.js, Express, Django
+Databases: MongoDB, PostgreSQL, MySQL
+Tools: Git, Docker, AWS, Jenkins
+
+PROJECTS
+
+E-commerce Platform
+- Built full-stack e-commerce site with React and Node.js
+- Integrated payment gateway and order management
+- Technologies: React, Redux, Node.js, MongoDB
+
+AI Chatbot
+- Developed intelligent chatbot using Python and NLP
+- Deployed on AWS Lambda
+- Technologies: Python, TensorFlow, AWS
